@@ -6,6 +6,7 @@ in one terminal:
 
     python pingpong.py # this is the server side
 
-in another terminal
+in another terminal:
 
-    python client.py
+    python client.py  # this is the client that makes 10 rpcs to ping
+
