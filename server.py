@@ -1,8 +1,13 @@
+import selectors
+import socket
+
 import logging
 
 from thrift.protocol.THeaderProtocol import THeaderProtocolFactory
 from thrift.server.TServer import TServer
 from thrift.transport import TTransport
+from thrift.transport.TSocket import TSocket
+
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +20,34 @@ class TSingleServer(TServer):
         self.client = None
         self.iprot = None
         self.oprot = None
+        self.lsock = None
+        self.selector = selectors.DefaultSelector()
+
+    def start_listening(self):
+        self.lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        host, port = self.serverTransport.host, self.serverTransport.port
+        self.lsock.bind((host, port))
+        self.lsock.setblocking(False)
+        self.lsock.listen()
+        logger.info(f"Listening on {(host, port)}")
+        self.selector.register(self.lsock, selectors.EVENT_READ, data=None)
+
+    def listen(self):
+        events = self.selector.select(timeout=None)
+        for key, mask in events:
+            if key.data is None:
+                client_sock, addr = self.lsock.accept()
+                self.client = TSocket()
+                self.client.setHandle(client_sock)
 
     def serve(self):
-        self.serverTransport.listen()
+        if not self.lsock:
+            raise Exception("call start_listening first please")
 
         if not self.client:
-            self.client = self.serverTransport.accept()
+            logger.info("waiting for a client to connect")
+            self.listen()
 
             self.itrans = self.inputTransportFactory.getTransport(self.client)
             self.iprot = self.inputProtocolFactory.getProtocol(self.itrans)
